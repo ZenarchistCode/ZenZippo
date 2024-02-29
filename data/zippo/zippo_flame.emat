@@ -1,0 +1,8 @@
+Particle 
+{
+	AlbedoMap "ZenZippo/data/zippo/zippo_flame.edds" 
+	Emissive 0.95 0.45 0.035 1
+	BlendMode Additive_AlphaModulate
+	TileU 3
+	TileV 3
+}
