@@ -6,30 +6,88 @@ modded class PetrolLighter
 	protected Particle m_FireParticle;
 	protected EffectSound m_LighterStartSound;
 	protected EffectSound m_LighterStopSound;
-	protected bool m_IsLitClient;
+	protected bool m_PlayLightSound;
 
-	// Set lighter to off state on creation
 	void PetrolLighter()
 	{
+		PrepareLighter();
+	}
+
+	// Set lighter to off state on object creation and have server sync its status
+	void PrepareLighter()
+	{
+		RegisterNetSyncVariableBoolSignal("m_PlayLightSound");
 		StopLighterFX();
 	}
 
-	// Set lighter to off state on despawn
+	// Stop light & fx on despawn
 	void ~PetrolLighter()
 	{
 		StopLighterFX();
 	}
 
+	// Turn off after server restart
+	override void DeferredInit()
+	{
+		super.DeferredInit();
+
+		if (GetGame().IsDedicatedServer())
+			TurnOffOnServer();
+	}
+
+	void TurnOffOnServer()
+	{
+		if (GetCompEM() && GetCompEM().IsWorking())
+			GetCompEM().SwitchOff();
+	}
+
+	override void OnVariablesSynchronized()
+	{
+		super.OnVariablesSynchronized();
+
+		if (m_PlayLightSound)
+		{
+			PlaySoundSet(m_LighterStartSound, START_SOUND, 0, 0);
+		}
+	}
+
+	override void OnWorkStart()
+	{
+		super.OnWorkStart();
+
+		if (GetGame().IsDedicatedServer()) // Server side - play sound only when lighter starts for first time
+		{
+			m_PlayLightSound = true;
+			SetSynchDirty();
+		}
+	}
+
+	override void OnWork(float consumed_energy) 
+	{
+		super.OnWork(consumed_energy);
+
+		if (!GetGame().IsServer() || !GetGame().IsMultiplayer()) // Client side
+		{
+			StartLighterFX();
+		}
+	}
+	
+	override void OnWorkStop()
+	{
+		super.OnWorkStop();
+
+		if (!GetGame().IsServer() || !GetGame().IsMultiplayer()) // Client side
+		{
+			StopLighterFX();
+		}
+	}
+
 	//! CLIENT
 	void StartLighterFX()
 	{
-		PlaySoundSet(m_LighterStartSound, START_SOUND, 0, 0);
-		UpdateLight();
-
-		if (!m_FireParticle)
-			m_FireParticle = Particle.PlayOnObject(ParticleList.ZEN_ZIPPO_FLAME, this, Vector(0,0.02,0), Vector(0,0,0), true);
-
-		m_FireParticle.SetWiggle(3, 0.1);
+		CreateFlameLight();
+		CreateFlameParticle();
+		AttachFlameParticle();
 	}
 
 	//! CLIENT
@@ -39,23 +97,23 @@ modded class PetrolLighter
 			m_Light.FadeOut();
 
 		if (m_FireParticle)
-			m_FireParticle.Stop();
+			m_FireParticle.StopParticle();
 	}
 
+	// Zippo can stay lit on ground
 	bool StopLighterOnGround()
 	{
 		return true;
 	}
 
-	// Turn off if moved out of hands
+	// Turn off if moved out of hands. autoSwitchOffWhenInCargo in .cpp takes care of turn off in cargo.
 	override void EEItemLocationChanged(notnull InventoryLocation oldLoc, notnull InventoryLocation newLoc)
 	{
 		super.EEItemLocationChanged(oldLoc, newLoc);
 
-		if (StopLighterOnGround() && newLoc.GetType() != InventoryLocationType.HANDS)
+		if (GetGame().IsDedicatedServer() && newLoc.GetType() != InventoryLocationType.HANDS && StopLighterOnGround())
 		{
-			if (GetCompEM() && GetCompEM().IsWorking())
-				GetCompEM().SwitchOff();
+			TurnOffOnServer();
 		}
 	}
 
@@ -64,34 +122,10 @@ modded class PetrolLighter
 	{
 		super.EEOnAfterLoad();
 
-		if (GetCompEM() && GetCompEM().IsWorking())
-			GetCompEM().SwitchOff();
+		TurnOffOnServer();
 	}
 
-	override void OnVariablesSynchronized()
-	{
-		super.OnVariablesSynchronized();
-		
-		// Sync visual fx
-		if (!GetCompEM().IsWorking())
-		{
-			if (m_IsLitClient)
-			{
-				m_IsLitClient = false;
-				StopLighterFX();
-			}
-		}
-		else 
-		{
-			if (!m_IsLitClient)
-			{
-				m_IsLitClient = true;
-				StartLighterFX();
-			}
-		}
-	}
-
-	void UpdateLight()
+	protected void CreateFlameLight()
 	{
 		if (!m_Light)
 		{
@@ -99,15 +133,25 @@ modded class PetrolLighter
 			m_Light.AttachOnObject(this, Vector(0,0,0));
 			m_Light.SetFadeOutTime(0.1);
 		}
+	}
 
-		if (m_FireParticle)
+	protected void CreateFlameParticle()
+	{
+		if (!m_FireParticle)
+			m_FireParticle = Particle.PlayOnObject(ParticleList.ZEN_ZIPPO_FLAME, this, Vector(0,0.02,-0.005), Vector(0,0,0), true);
+	}
+
+	protected void AttachFlameParticle()
+	{
+		if (!m_FireParticle)
+			return;
+
+		// Attach particle to light
+		m_FireParticle.SetWiggle(2, 0.1);
+		Object direct_particle = m_FireParticle.GetDirectParticleEffect();
+		if (direct_particle && direct_particle != m_Light.GetAttachmentParent())
 		{
-			Object direct_particle = m_FireParticle.GetDirectParticleEffect();
-			
-			if (direct_particle && direct_particle != m_Light.GetAttachmentParent())
-			{
-				m_Light.AttachOnObject(direct_particle, Vector(0,0.1,0));
-			}	
+			m_Light.AttachOnObject(direct_particle, Vector(0,0,0));
 		}
 	}
 

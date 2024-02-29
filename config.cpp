@@ -71,6 +71,17 @@ class CfgVehicles
 			convertEnergyToQuantity=1;
 			autoSwitchOffWhenInCargo=1;
 		};
+		class AnimEvents
+		{
+			class SoundWeapon
+			{
+				class LighterZippo
+				{
+					soundSet=""; // Mute action SFX as lighter is lit
+					id=201;
+				};
+			};
+		};
 	}
 
 	// My zippos
@@ -169,7 +180,7 @@ class CfgVehicles
 			{
 				class LighterZippo
 				{
-					soundSet="Lighter_Soundset";
+					soundSet=""; // Mute action SFX as lighter is lit
 					id=201;
 				};
 			};
